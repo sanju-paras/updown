@@ -110,14 +110,13 @@
     <script>
         // --- Global Game State Variables ---
         let players = []; // Array of player names (strings)
-        // Stores game data for each round for each player.
-        // Example: gameRounds = [{ 'Player1': { bid: 3, actual: 2, score: 0 }, 'Player2': {...} }, ...]
-        let gameRounds = [];
+        let gameRounds = []; // Stores game data for each round for each player.
         let currentRound = 0; // The current round index (0-indexed)
 
-        // Fixed absolute upper bounds for card counts based on game rules
+        // Constants for card dealing limits and session storage key
         const ABSOLUTE_MAX_ODD_CARDS_CAP = 13;
         const ABSOLUTE_MAX_EVEN_CARDS_CAP = 14;
+        const PLAYERS_STORAGE_KEY = 'upDownRiverPlayers'; // Key for session storage
 
         let roundCardCounts = []; // Array storing the number of cards for each round in sequence
 
@@ -139,6 +138,32 @@
         const messageBox = document.getElementById('message-box');
         const messageContent = document.getElementById('message-content');
         const messageBoxButtons = document.getElementById('message-box-buttons');
+
+        /**
+         * Saves the current list of players to session storage.
+         */
+        function savePlayersToStorage() {
+            try {
+                sessionStorage.setItem(PLAYERS_STORAGE_KEY, JSON.stringify(players));
+            } catch (e) {
+                console.error("Error saving players to session storage:", e);
+                // Optionally, show a non-intrusive message to the user about storage issues
+            }
+        }
+
+        /**
+         * Loads players from session storage.
+         * @returns {Array<string>} An array of player names.
+         */
+        function loadPlayersFromStorage() {
+            try {
+                const storedPlayers = sessionStorage.getItem(PLAYERS_STORAGE_KEY);
+                return storedPlayers ? JSON.parse(storedPlayers) : [];
+            } catch (e) {
+                console.error("Error loading players from session storage:", e);
+                return []; // Return empty array on error
+            }
+        }
 
         /**
          * Displays a custom message box with dynamic buttons and content.
@@ -272,7 +297,7 @@
          * This function is for a full reset, clearing players and returning to setup.
          */
         function initializeGame() {
-            players = []; // Clear players for a full reset
+            players = loadPlayersFromStorage(); // Load players from session storage
             gameRounds = [];
             currentRound = 0;
             roundCardCounts = []; // Reset it to empty; will be generated in startGame()
@@ -281,6 +306,7 @@
             gameSection.classList.add('hidden'); // Hide the game section
             playerSetupSection.classList.remove('hidden'); // Show the player setup section
             hideMessageBox(); // Hide message box on game reset
+            renderPlayersList(); // Render the loaded players
         }
 
         /**
@@ -308,7 +334,7 @@
 
         /**
          * Adds a new player to the game if the name is not empty and not a duplicate.
-         * Updates the player list display.
+         * Updates the player list display and saves to session storage.
          */
         function addPlayer() {
             const playerName = newPlayerNameInput.value.trim();
@@ -320,16 +346,19 @@
                 players.push(playerName);
                 newPlayerNameInput.value = ''; // Clear the input field
                 renderPlayersList(); // Update the displayed list of players
+                savePlayersToStorage(); // Save players after adding
             }
         }
 
         /**
          * Removes a player from the game.
+         * Updates the player list display and saves to session storage.
          * @param {string} playerName - The name of the player to remove.
          */
         function removePlayer(playerName) {
             players = players.filter(p => p !== playerName); // Filter out the player to be removed
             renderPlayersList(); // Re-render the player list
+            savePlayersToStorage(); // Save players after removing
         }
 
         /**
@@ -741,6 +770,7 @@
                 'Are you sure you want to reset the game? All progress will be lost. This cannot be undone.',
                 () => {
                     initializeGame();
+                    sessionStorage.removeItem(PLAYERS_STORAGE_KEY); // Clear players from storage on full reset
                     playerSetupSection.classList.remove('hidden');
                     gameSection.classList.add('hidden');
                 },
