@@ -409,4 +409,392 @@
             }
 
             playerSetupSection.classList.add('hidden'); // Hide the player setup card
-            gameSec
+            gameSection.classList.remove('hidden'); // Show the main game section
+            renderScoreboard(); // Display the scoreboard for the initial round
+        }
+
+        /**
+         * Checks if all inputs for the current round are valid (not NaN, within range)
+         * and if scores have been calculated for all players for this round.
+         * @returns {boolean} True if all inputs are valid and scores calculated, false otherwise.
+         */
+        function areAllCurrentRoundScoresCalculated() {
+            const currentCards = roundCardCounts[currentRound];
+            
+            // Use Array.prototype.every for concise and efficient validation
+            return players.every(player => {
+                const bidInput = document.getElementById(`bid-${player}`);
+                const actualInput = document.getElementById(`actual-${player}`);
+
+                // If inputs don't exist yet (e.g., still rendering, or an edge case),
+                // consider them not ready/calculated.
+                if (!bidInput || !actualInput) {
+                    return false;
+                }
+
+                const bid = parseInt(bidInput.value);
+                const actual = parseInt(actualInput.value);
+
+                // Check for valid number and range (0 to currentCards)
+                const isValidInput = !isNaN(bid) && !isNaN(actual) && bid >= 0 && actual >= 0 && bid <= currentCards && actual <= currentCards;
+                
+                // Check if score has been explicitly calculated (not null) in the game data
+                const isScoreCalculated = gameRounds[currentRound] && gameRounds[currentRound][player].score !== null;
+
+                return isValidInput && isScoreCalculated;
+            });
+        }
+
+        /**
+         * Creates and returns a table row (<tr>) element for a player in the scoreboard.
+         * @param {string} player - The name of the player.
+         * @param {number} index - The index of the player in the players array.
+         * @param {number} currentCards - The number of cards for the current round.
+         * @returns {HTMLTableRowElement} The created table row element.
+         */
+        function createPlayerScoreRow(player, index, currentCards) {
+            const row = document.createElement('tr');
+            
+            // Determine if the current player hit their bid for THIS round
+            const playerRoundData = gameRounds[currentRound] ? gameRounds[currentRound][player] : null;
+            const isAccurateBid = playerRoundData && playerRoundData.bid !== null && playerRoundData.actual !== null && playerRoundData.bid === playerRoundData.actual;
+            
+            row.className = `bg-white hover:bg-gray-50 ${isAccurateBid ? 'accurate-bid-row' : ''}`;
+
+            // Player Name Cell
+            let cell = row.insertCell();
+            cell.className = 'px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900';
+            cell.textContent = player;
+
+            // Bid Input Cell
+            cell = row.insertCell();
+            cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-500';
+            const bidInput = document.createElement('input');
+            bidInput.type = 'number';
+            bidInput.min = '0';
+            bidInput.max = currentCards.toString();
+            bidInput.className = 'w-16 p-2 border border-gray-300 rounded-md text-center focus:outline-none focus:ring-1 focus:ring-blue-400';
+            bidInput.id = `bid-${player}`;
+            bidInput.dataset.playerIndex = index;
+            bidInput.dataset.inputType = 'bid';
+            if (playerRoundData && playerRoundData.bid !== null) {
+                bidInput.value = playerRoundData.bid;
+            }
+            bidInput.addEventListener('change', (e) => handleInputChangeAndFocus(e, 'bid'));
+            cell.appendChild(bidInput);
+
+            // Actual Tricks Input Cell
+            cell = row.insertCell();
+            cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-500';
+            const actualInput = document.createElement('input');
+            actualInput.type = 'number';
+            actualInput.min = '0';
+            actualInput.max = currentCards.toString();
+            actualInput.className = 'w-16 p-2 border border-gray-300 rounded-md text-center focus:outline-none focus:ring-1 focus:ring-blue-400';
+            actualInput.id = `actual-${player}`;
+            actualInput.dataset.playerIndex = index;
+            actualInput.dataset.inputType = 'actual';
+            if (playerRoundData && playerRoundData.actual !== null) {
+                actualInput.value = playerRoundData.actual;
+            }
+            actualInput.addEventListener('change', (e) => {
+                handleInputChangeAndFocus(e, 'actual');
+                // Automatically calculate scores when the last player's actual is entered
+                if (parseInt(e.target.dataset.playerIndex) === players.length - 1) {
+                    calculateScores();
+                }
+            });
+            cell.appendChild(actualInput);
+
+            // Current Round Score Cell
+            cell = row.insertCell();
+            cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-900 font-semibold';
+            cell.id = `score-round-${player}`;
+            if (playerRoundData && playerRoundData.score !== null) {
+                cell.textContent = playerRoundData.score;
+            } else {
+                cell.textContent = '-';
+            }
+
+            // Total Score Cell
+            cell = row.insertCell();
+            cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-900 font-bold';
+            cell.id = `score-total-${player}`;
+            cell.textContent = calculatePlayerTotalScore(player);
+            
+            return row;
+        }
+
+        /**
+         * Renders the scoreboard table for the `currentRound`.
+         * Updates round information (current round number, cards dealt) and player rows.
+         * Also manages the enabled/disabled state of 'Previous' and 'Next' round buttons.
+         * Sets initial focus to the first player's bid input.
+         */
+        function renderScoreboard() {
+            scoreboardBody.innerHTML = ''; // Clear existing rows in the scoreboard table
+            const currentCards = roundCardCounts[currentRound];
+            currentRoundNumberSpan.textContent = currentRound + 1;
+            cardsDealtSpan.textContent = currentCards;
+            currentRoundScoreCol.textContent = `R${currentRound + 1} Score`;
+
+            const totalRounds = roundCardCounts.length;
+            prevRoundBtn.disabled = currentRound <= 0;
+
+            const isLastRound = currentRound === totalRounds - 1;
+            
+            // Set "Next Round" button text
+            nextRoundBtn.textContent = isLastRound ? 'Show scores' : 'Next Round';
+
+            // Create and append a row for each player
+            players.forEach((player, index) => {
+                const row = createPlayerScoreRow(player, index, currentCards);
+                scoreboardBody.appendChild(row);
+            });
+
+            // After inputs are rendered, use a setTimeout to defer the check for enabling/disabling the next button.
+            // This ensures the DOM has fully updated and elements are accessible.
+            setTimeout(() => {
+                nextRoundBtn.disabled = !areAllCurrentRoundScoresCalculated();
+            }, 0);
+
+            // Set initial focus to the first player's bid input when scoreboard is rendered
+            if (players.length > 0) {
+                // Use a small timeout to ensure elements are fully rendered and focusable
+                setTimeout(() => {
+                    const firstBidInput = document.getElementById(`bid-${players[0]}`);
+                    if (firstBidInput) {
+                        firstBidInput.focus();
+                    }
+                }, 0);
+            }
+        }
+
+        /**
+         * Handles the change event for bid and actual inputs to manage focus.
+         * Shifts focus to the next logical input field in the sequence (all bids, then all actuals).
+         * @param {Event} event - The change event object.
+         * @param {string} inputType - 'bid' or 'actual'.
+         */
+        function handleInputChangeAndFocus(event, inputType) {
+            const currentPlayerIndex = parseInt(event.target.dataset.playerIndex);
+            const nextPlayerIndex = currentPlayerIndex + 1;
+
+            if (inputType === 'bid') {
+                if (nextPlayerIndex < players.length) {
+                    document.getElementById(`bid-${players[nextPlayerIndex]}`).focus();
+                } else {
+                    document.getElementById(`actual-${players[0]}`).focus();
+                }
+            } else if (inputType === 'actual') {
+                if (nextPlayerIndex < players.length) {
+                    document.getElementById(`actual-${players[nextPlayerIndex]}`).focus();
+                } else {
+                    // Last player's actual, check if nextRoundBtn is enabled and focus it
+                    if (!nextRoundBtn.disabled) {
+                        nextRoundBtn.focus();
+                    } else if (players.length > 0) {
+                        // If no next round and button disabled, focus on the first bid of the current round
+                        document.getElementById(`bid-${players[0]}`).focus();
+                    }
+                }
+            }
+        }
+
+        /**
+         * Calculates the cumulative total score for a specific player across all completed rounds.
+         * @param {string} player - The name of the player.
+         * @returns {number} The total score of the player.
+         */
+        function calculatePlayerTotalScore(player) {
+            let total = 0;
+            // Iterate through all rounds up to and including the current one
+            for (let i = 0; i <= currentRound; i++) {
+                 // Add the score from each round if it exists and is calculated
+                 if (gameRounds[i] && gameRounds[i][player] && gameRounds[i][player].score !== null) {
+                     total += gameRounds[i][player].score;
+                 }
+            }
+            return total;
+        }
+
+        /**
+         * Calculates scores for all players for the `currentRound` based on their bids and actual tricks won.
+         * - Validates inputs (must be numbers within 0 and current cards dealt).
+         * - Applies scoring rules: 5 + actual tricks if bid matches, else actual tricks.
+         * - Updates the `gameRounds` state and re-renders the scoreboard to display new scores.
+         */
+        function calculateScores() {
+            const currentCards = roundCardCounts[currentRound];
+            let allInputsValid = true;
+            let currentRoundInputData = {}; // Temporary storage for validated inputs
+
+            // Validate all inputs for the current round before calculating any scores
+            for (const player of players) {
+                const bidInput = document.getElementById(`bid-${player}`);
+                const actualInput = document.getElementById(`actual-${player}`);
+
+                if (!bidInput || !actualInput) { // Defensive check
+                    allInputsValid = false;
+                    break;
+                }
+
+                const bid = parseInt(bidInput.value);
+                const actual = parseInt(actualInput.value);
+
+                if (isNaN(bid) || isNaN(actual) || bid < 0 || actual < 0 || bid > currentCards || actual > currentCards) {
+                    allInputsValid = false;
+                    break;
+                }
+                currentRoundInputData[player] = { bid, actual };
+            }
+
+            if (!allInputsValid) {
+                showMessageBox('Please enter valid bid and actual trick counts for all players for the current round. Values must be between 0 and the number of cards dealt (' + currentCards + ').');
+                nextRoundBtn.disabled = true; // Keep next button disabled if inputs are invalid
+                return;
+            }
+
+            // If all inputs are valid, proceed to calculate and store scores
+            players.forEach(player => {
+                const { bid, actual } = currentRoundInputData[player];
+
+                let score;
+                if (bid === actual) {
+                    score = 5 + actual; // Correct bid: 5 bonus points + actual tricks won
+                } else {
+                    score = actual; // Incorrect bid: score is equal to actual tricks won
+                }
+
+                gameRounds[currentRound][player].bid = bid;
+                gameRounds[currentRound][player].actual = actual;
+                gameRounds[currentRound][player].score = score;
+            });
+
+            renderScoreboard(); // Re-render the scoreboard to display updated scores
+        }
+
+        /**
+         * Displays the final score table and declares winners.
+         */
+        function showFinalScores() {
+            const finalScores = players.map(player => ({
+                name: player,
+                totalScore: calculatePlayerTotalScore(player)
+            }));
+
+            // Sort players by score in descending order
+            finalScores.sort((a, b) => b.totalScore - a.totalScore);
+
+            const highestScore = finalScores.length > 0 ? finalScores[0].totalScore : 0;
+            const winners = finalScores.filter(player => player.totalScore === highestScore && highestScore > 0);
+
+            let winnerText = '';
+            if (winners.length === players.length && players.length > 0) {
+                winnerText = `<p class="text-2xl font-bold text-gray-700 mt-4 mb-2">It's a draw!</p>`;
+            } else if (winners.length === 1) {
+                winnerText = `<p class="text-2xl font-bold text-green-700 mt-4 mb-2">🎉 Winner: ${winners[0].name}! 🎉</p>`;
+            } else if (winners.length > 1) {
+                winnerText = `<p class="text-2xl font-bold text-green-700 mt-4 mb-2">🎉 Winners: ${winners.map(w => w.name).join(', ')}! 🎉</p>`;
+            } else {
+                winnerText = `<p class="text-xl font-semibold text-gray-700 mt-4 mb-2">Game Over!</p>`;
+            }
+
+            let tableHtml = `
+                <h3 class="text-xl font-bold mb-3 text-blue-800">Final Scores</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Score</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+            `;
+
+            finalScores.forEach(player => {
+                const isWinnerClass = (player.totalScore === highestScore && highestScore > 0 && winners.some(w => w.name === player.name)) ? 'bg-yellow-100 font-bold' : '';
+                tableHtml += `
+                    <tr class="${isWinnerClass}">
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${player.name}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${player.totalScore}</td>
+                    </tr>
+                `;
+            });
+
+            tableHtml += `
+                        </tbody>
+                    </table>
+                </div>
+                ${winnerText}
+            `;
+
+            showMessageBox(tableHtml, resetGameKeepingPlayers, 'Start New Game', 'Close');
+        }
+
+        /**
+         * Advances the game to the next round.
+         * Requires all scores for the current round to be calculated before proceeding.
+         */
+        function nextRound() {
+            if (!areAllCurrentRoundScoresCalculated()) {
+                showMessageBox('Please ensure all bids and actual tricks are entered and scores are calculated for the current round before proceeding.');
+                return;
+            }
+
+            if (currentRound < roundCardCounts.length - 1) {
+                currentRound++;
+                renderScoreboard();
+            } else {
+                showFinalScores();
+            }
+        }
+
+        /**
+         * Navigates the game back to the previous round.
+         */
+        function prevRound() {
+            if (currentRound > 0) {
+                currentRound--;
+                renderScoreboard();
+            }
+        }
+
+        /**
+         * Prompts the user for confirmation and then resets the entire game.
+         * All player data and scores will be cleared.
+         */
+        function resetGame() {
+            showMessageBox(
+                'Are you sure you want to reset the game? All progress will be lost. This cannot be undone.',
+                () => {
+                    initializeGame();
+                    sessionStorage.removeItem(PLAYERS_STORAGE_KEY); // Clear players from storage on full reset
+                    playerSetupSection.classList.remove('hidden');
+                    gameSection.classList.add('hidden');
+                },
+                'Yes, Reset Game',
+                'No, Cancel'
+            );
+        }
+
+        // --- Event Listeners ---
+        addPlayerBtn.addEventListener('click', addPlayer);
+        newPlayerNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addPlayer();
+            }
+        });
+        startGameBtn.addEventListener('click', startGame);
+        nextRoundBtn.addEventListener('click', nextRound);
+        prevRoundBtn.addEventListener('click', prevRound);
+        resetGameBtn.addEventListener('click', resetGame);
+
+        // --- Initial Setup on Page Load ---
+        initializeGame();
+    </script>
+</body>
+</html>
+
