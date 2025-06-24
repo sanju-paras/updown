@@ -621,7 +621,7 @@
         /**
          * Calculates scores for all players for the `currentRound` based on their bids and actual tricks won.
          * - Validates inputs (must be numbers within 0 and current cards dealt).
-         * - Applies scoring rules: 5 + actual tricks if bid matches, 0 points otherwise.
+         * - Applies scoring rules: 5 + actual tricks if bid matches, else actual tricks.
          * - Updates the `gameRounds` state and re-renders the scoreboard to display new scores.
          */
         function calculateScores() {
@@ -663,7 +663,7 @@
                 if (bid === actual) {
                     score = 5 + actual; // Correct bid: 5 bonus points + actual tricks won
                 } else {
-                    score = 0; // Incorrect bid: 0 points
+                    score = actual; // Incorrect bid: score is equal to actual tricks won (changed from 0)
                 }
 
                 gameRounds[currentRound][player].bid = bid;
